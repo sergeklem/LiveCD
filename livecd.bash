@@ -12,7 +12,6 @@ RELEASE="precise"
 HOST="arm13"
 USER="user"
 PASSWORD="user"
-WORKDIR="/home/user/work/"
 DIR_BUILD="/home/user/work/"
 CUSTOMIMAGE="LiveCD_12.04-amd64.iso"
 
@@ -99,42 +98,43 @@ function createLiveCD {
 
 function createCdDirectory {
   log_msg "Create the Cd Image Directory and Populate it"
-  cd ${WORKDIR}
-  if [ -d "${WORKDIR}/image" ]; then
-  rm -rf "${WORKDIR}image/*"
+  if [ -d "${DIR_BUILD}image" ]; then
+  rm -rf "${DIR_BUILD}image/*"
   fi
   log_msg "Creating folder tree"
-  mkdir -p "${WORKDIR}image/{casper,preseed,install,isolinux,.disk}"
-  mkdir -p "${WORKDIR}chroot/{boot,etc,etc/apt}"
+  mkdir -p "${DIR_BUILD}image/{casper,preseed,install,isolinux,.disk}"
+  mkdir -p "${DIR_BUILD}chroot/{boot,etc,etc/apt}"
   log_msg "Creating a new initial ramdisk for the live system"
   mkinitramfs -o "/boot/initrd.img-`uname -r`" "`uname -r`"
   log_msg "Copying your kernel and initrd for the livecd"
-  cp "/boot/vmlinuz-`uname -r`" "${WORKDIR}chroot/boot/vmlinuz-`uname -r`"
-  cp "/boot/initrd.img-`uname -r`" "${WORKDIR}chroot/boot/initrd.img-`uname -r`"
-  cp "${WORKDIR}chroot/boot/vmlinuz-`uname -r`" "${WORKDIR}image/casper/vmlinuz"
-  cp "${WORKDIR}chroot/boot/initrd.img-`uname -r`"                             \
-      "${WORKDIR}image/casper/initrd.lz"
-  if [ ! -f "${WORKDIR}image/casper/vmlinuz" ]; then
+  cp "/boot/vmlinuz-`uname -r`" "${DIR_BUILD}chroot/boot/vmlinuz-`uname -r`"
+  cp "/boot/initrd.img-`uname -r`"                                             \
+      "${DIR_BUILD}chroot/boot/initrd.img-`uname -r`"
+  cp "${DIR_BUILD}chroot/boot/vmlinuz-`uname -r`"                              \
+      "${DIR_BUILD}image/casper/vmlinuz"
+  cp "${DIR_BUILD}chroot/boot/initrd.img-`uname -r`"                           \
+      "${DIR_BUILD}image/casper/initrd.lz"
+  if [ ! -f "${DIR_BUILD}image/casper/vmlinuz" ]; then
     log_msg "Missing valid kernel. Exiting"
     exit 1
   fi
-  if [ ! -f "${WORKDIR}image/casper/initrd.lz" ]; then
+  if [ ! -f "${DIR_BUILD}image/casper/initrd.lz" ]; then
     log_msg "Missing valid initial ramdisk. Exiting"
     exit 1
   fi
-  cp "/boot/memtest86+.bin" "${WORKDIR}image/install/memtest"
+  cp "/boot/memtest86+.bin" "${DIR_BUILD}image/install/memtest"
 }
 
 function makeChRoot {
   log_msg "Make the ChRoot Environment"
-  debootstrap --arch="${ARCH}" "${RELEASE}" "${WORKDIR}chroot"
+  debootstrap --arch="${ARCH}" "${RELEASE}" "${DIR_BUILD}chroot"
   #debootstrap --arch=amd64 precise chroot
-  cp /etc/hosts "${WORKDIR}chroot/etc/hosts"
-  cp /etc/resolv.conf "${WORKDIR}chroot/etc/resolv.conf"
-  cp /etc/apt/sources.list "${WORKDIR}chroot/etc/apt/sources.list"
+  cp /etc/hosts "${DIR_BUILD}chroot/etc/hosts"
+  cp /etc/resolv.conf "${DIR_BUILD}chroot/etc/resolv.conf"
+  cp /etc/apt/sources.list "${DIR_BUILD}chroot/etc/apt/sources.list"
   log_msg "Create customization script and run it in chroot"
   #mount --bind /dev chroot/dev
-  cat > "${WORKDIR}chroot/tmp/customize.bash" <<EOFmakeChRoot
+  cat > "${DIR_BUILD}chroot/tmp/customize.bash" <<EOFmakeChRoot
 #!/bin/bash
 mount none -t proc /proc
 mount none -t sysfs /sys
@@ -179,8 +179,8 @@ umount -lf /dev/pts
 exit
 EOFmakeChRoot
 
-chmod +x "${WORKDIR}chroot/tmp/customize.bash"
-chroot "${WORKDIR}chroot" bash "/tmp/customize.bash"
+chmod +x "${DIR_BUILD}chroot/tmp/customize.bash"
+chroot "${DIR_BUILD}chroot" bash "/tmp/customize.bash"
 #umount chroot/dev
 }
 
@@ -188,7 +188,7 @@ function createPreseed {
   log_msg " Create Preseed Instruction"
   apt-get install --yes whois >/dev/null 2>&1
   local cryptpassword="$(mkpasswd "${PASSWORD}")"
-  cat > "${WORKDIR}image/preseed/oem.seed" <<EOFcreatePreseed
+  cat > "${DIR_BUILD}image/preseed/oem.seed" <<EOFcreatePreseed
 d-i debian-installer/locale string ru_RU.UTF-8
 # Keyboard
 d-i debian-installer/language string ru
@@ -279,8 +279,8 @@ EOFcreatePreseed
 
 function bootScreen {
   log_msg "Boot Screen for the LiveCD"
-  cd "${WORKDIR}image/isolinux"
-  local dir_bootScreen="${WORKDIR}image/isolinux/"
+  cd "${DIR_BUILD}image/isolinux"
+  local dir_bootScreen="${DIR_BUILD}image/isolinux/"
   wget "https://www.dropbox.com/s/5mkvy1s11x7qm88/vesamenu.c32" -O             \
       "${dir_bootScreen}/vesamenu.c32" >/dev/null 2>&1
   cp "/usr/lib/syslinux/isolinux.bin" "${dir_bootScreen}"
@@ -334,7 +334,7 @@ EOF3
 
 function createManifest {
   log_msg "Creating filesystem.manifest and filesystem.manifest-desktop"
-  local dir_manifest="${WORKDIR}image/casper/"
+  local dir_manifest="${DIR_BUILD}image/casper/"
   chroot chroot dpkg-query -W --showformat='${Package} ${Version}\n' |         \
       tee "${dir_manifest}filesystem.manifest" >/dev/null 2>&1
   cp -v "${dir_manifest}filesystem.manifest"                                   \
@@ -348,7 +348,7 @@ function createManifest {
 }
 
 function compressChRoot {
-  local dir_compressChroot="${WORKDIR}image/casper/"
+  local dir_compressChroot="${DIR_BUILD}image/casper/"
   if [ ! -d "${dir_compressChroot}filesystem.squashfs" ]; then
     rm -rf "${dir_compressChroot}filesystem.squashfs"
   fi
@@ -360,7 +360,7 @@ function compressChRoot {
 
 function createDiskdefines {
   log_msg "Create diskdefines"
-  cat > "${WORKDIR}image/README.diskdefines" <<EOFcreateDiskdefines
+  cat > "${DIR_BUILD}image/README.diskdefines" <<EOFcreateDiskdefines
 #define DISKNAME  Ubuntu Remix
 #define TYPE  binary
 #define TYPEbinary  1
@@ -374,22 +374,22 @@ EOFcreateDiskdefines
 }
 
 function recognitionLiveUbuntu {
-  touch "${WORKDIR}image/ubuntu"
-  touch "${WORKDIR}.disk/base_installable"
-  echo "full_cd/single" > "${WORKDIR}.disk/cd_type"
-  echo "Ubuntu Remix" > "${WORKDIR}.disk/info"
-  echo "http//your-release-notes-url.com" > "${WORKDIR}.disk/release_notes_url"
+  touch "${DIR_BUILD}image/ubuntu"
+  touch "${DIR_BUILD}.disk/base_installable"
+  echo "full_cd/single" > "${DIR_BUILD}.disk/cd_type"
+  echo "Ubuntu Remix" > "${DIR_BUILD}.disk/info"
+  echo "http//your-release-notes-url.com" > "${DIR_BUILD}.disk/release_notes_url"
 }
 
 function calculateMD5 {
   log_msg "Calculate MD5"
-  (cd "${WORKDIR}image" && find . -type f -print0 | xargs -0 md5sum |          \
+  (cd "${DIR_BUILD}image" && find . -type f -print0 | xargs -0 md5sum |        \
       grep -v "\./md5sum.txt" > md5sum.txt)
 }
 
 function createISO {
   log_msg "Create ISO Image for a LiveCD"
-  local dir_createIso="${WORKDIR}image/"
+  local dir_createIso="${DIR_BUILD}image/"
   mkisofs -r -V "$IMAGE_NAME" 
           -cache-inodes                                                        \
           -J -l -b "${dir_createIso}isolinux/isolinux.bin"                     \
@@ -400,11 +400,11 @@ function createISO {
 
 function log_msg() {
     local mdate="$(date +%d-%m-%Y\ %H:%M:%S) "
-    if [ ! -d "${WORKDIR}" ]; then
-      mkdir "${WORKDIR}"
+    if [ ! -d "${DIR_BUILD}" ]; then
+      mkdir "${DIR_BUILD}"
     fi
     echo "$1"
-    echo "$mdate$1" >> "${WORKDIR}LiveCD.log"
+    echo "$mdate$1" >> "${DIR_BUILD}LiveCD.log"
 }
 
 function backupScript {
@@ -416,5 +416,5 @@ function backupScript {
         "$(date +%H:%M-%d%m%Y)"-livecd.bash
 }
 
-# Script's entry point: #############################################
+# Script's entry point: ########################################################
 main "$@"
