@@ -1,20 +1,25 @@
 #!/bin/bash
+################################################################################
+#
+# Description
+#
+################################################################################
 
-
+### Constants ##################################################################
 DIR_BUILD="/home/user/iso/"
 HOME="/home/user/"
 IMAGE="ubuntu-12.04.2-server-amd64.iso"
 CUSTOMIMAGE="ARM_12.04-amd64.iso"
 USER="user"
 PASSWORD="user"
-TARGET_PACKAGES="xorg nodm chromium-browser wget htop mc nano                  \
-                 openssh-server sshpass git curl bzip2                         \
-                 build-essential zlib1g-dev libtool automake                   \
-                 autoconf autotools-dev expect python-pexpect                  \
-                 python-software-properties python cups foo2zjs                \
-                 nodejs debconf-utils maven whois perl"
+TARGET_PACKAGES="xorg nodm chromium-browser wget htop mc nano openssh-server   \
+                 sshpass git curl bzip2 build-essential zlib1g-dev libtool     \
+                 build-essential zlib1g-dev libtool automake autoconf expect   \
+                 autotools-dev python-pexpect python-software-properties       \
+                 python cups foo2zjs nodejs debconf-utils maven whois perl"
                  # oracle-java7-installer oracle-java7-set-default"
 
+### Implementation #############################################################
 function main {
   unpacingImage
   createBootMenu
@@ -90,6 +95,13 @@ function createLocRep {
   local url="https://dl.dropboxusercontent.com/u/42220829/pp/"
   wget --quiet "${URL}""${headers}" -O "${dir_packages}""${headers}">/dev/null 2>&1
   wget --quiet "${URL}""${image}" -O "${dir_packages}""${image}">/dev/null 2>&1
+}
+
+function gitClone {
+  local git_user="$1"
+  local git_password="$2"
+  git clone "ssh://""${git_user}""@mir.afsoft.org/opt/git/mm/mir.git:""${git_password}" "${HOME}/mir"
+
 }
 
 function createPreseed {
@@ -244,7 +256,8 @@ function log_msg() {
     mkdir -p "${DIR_BUILD}"
   fi
   log_msg "$1"
-  log_msg "$mdate$1" >> "${DIR_BUILD}LiveCD.log"
+  log_msg "$mdate$1" >> "${DIR_BUILD}make_installer.log"
 }
 
+# Script's entry point: ########################################################
 main "$@"
