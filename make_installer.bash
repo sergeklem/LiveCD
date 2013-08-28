@@ -7,11 +7,11 @@ IMAGE="ubuntu-12.04.2-server-amd64.iso"
 CUSTOMIMAGE="ARM_12.04-amd64.iso"
 USER="user"
 PASSWORD="user"
-TARGET_PACKAGES="xorg nodm chromium-browser wget htop mc nano         \
-                 openssh-server sshpass git curl bzip2                \
-                 build-essential zlib1g-dev libtool automake          \
-                 autoconf autotools-dev expect python-pexpect         \
-                 python-software-properties python cups foo2zjs       \
+TARGET_PACKAGES="xorg nodm chromium-browser wget htop mc nano                  \
+                 openssh-server sshpass git curl bzip2                         \
+                 build-essential zlib1g-dev libtool automake                   \
+                 autoconf autotools-dev expect python-pexpect                  \
+                 python-software-properties python cups foo2zjs                \
                  nodejs debconf-utils maven whois perl"
                  # oracle-java7-installer oracle-java7-set-default"
 
@@ -81,8 +81,8 @@ function createLocRep {
     apt-get --print-uris --yes install "${p}" \
         | grep ^\' | cut -d\' -f2 >> "${fileTmpUrls}"
   done
-  (cd "${HOME}packages/debs" && wget --input-file "${fileTmpUrls}" \
-    >/dev/null 2>&1 && cd -)
+  (cd "${HOME}packages/debs" && wget --input-file "${fileTmpUrls}"             \
+      >/dev/null 2>&1 && cd -)
   log_msg "Download kernel"
   local version="3.2.27.130816-bmcm-rt40"
   local headers="linux-headers-${version}_0_amd64.deb"
@@ -130,31 +130,31 @@ d-i user-setup/encrypt-home boolean false
 # Partitioning
 d-i partman-auto/disk string /dev/sda
 d-i partman-auto/method string regular
-d-i partman-auto/expert_recipe string                        \
-     boot-root ::                                            \
-             512 50000 512 ext4                              \
-                     $primary{ } $bootable{ }                \
-                     method{ format } format{ }              \
-                     use_filesystem{ } filesystem{ ext4 }    \
-                     mountpoint{ /boot }                     \
-             .                                               \
-             7000 10000 90000 ext4                           \
-                     method{ format } format{ }              \
-                     use_filesystem{ } filesystem{ ext4 }    \
-                     mountpoint{ / }                         \
-             .                                               \
-             5000 10000 10000 ext4                           \
-                     method{ format } format{ }              \
-                     use_filesystem{ } filesystem{ ext4 }    \
-                     mountpoint{ /var }                      \
-             .                                               \
-             500 10000 1000000000 ext4                       \
-                     method{ format } format{ }              \
-                     use_filesystem{ } filesystem{ ext4 }    \
-                     mountpoint{ /srv }                      \
-             .                                               \
-             64 51200 300% linux-swap                        \
-                     method{ swap } format{ }                \
+d-i partman-auto/expert_recipe string                                          \
+     boot-root ::                                                              \
+             512 50000 512 ext4                                                \
+                     $primary{ } $bootable{ }                                  \
+                     method{ format } format{ }                                \
+                     use_filesystem{ } filesystem{ ext4 }                      \
+                     mountpoint{ /boot }                                       \
+             .                                                                 \
+             7000 10000 90000 ext4                                             \
+                     method{ format } format{ }                                \
+                     use_filesystem{ } filesystem{ ext4 }                      \
+                     mountpoint{ / }                                           \
+             .                                                                 \
+             5000 10000 10000 ext4                                             \
+                     method{ format } format{ }                                \
+                     use_filesystem{ } filesystem{ ext4 }                      \
+                     mountpoint{ /var }                                        \
+             .                                                                 \
+             500 10000 1000000000 ext4                                         \
+                     method{ format } format{ }                                \
+                     use_filesystem{ } filesystem{ ext4 }                      \
+                     mountpoint{ /srv }                                        \
+             .                                                                 \
+             64 51200 300% linux-swap                                          \
+                     method{ swap } format{ }                                  \
              .
 d-i partman/confirm_write_new_label boolean true
 d-i partman/choose_partition select finish
@@ -180,9 +180,9 @@ d-i finish-install/reboot_in_progress note
 
 tasksel tasksel/first multiselect ubuntu-server
 
-d-i preseed/late_command string mkdir /target/install/;     \
-        cp -R /cdrom/packages/* /target/install/;           \
-        chroot /target chmod +x /install/postinstall.bash;  \
+d-i preseed/late_command string mkdir /target/install/;                        \
+        cp -R /cdrom/packages/* /target/install/;                              \
+        chroot /target chmod +x /install/postinstall.bash;                     \
         chroot /target bash /install/postinstall.bash
 EOFcreatePreseed
 }
@@ -226,15 +226,15 @@ function packingImage {
   # Запаковываем содержимое iso/ в образ ubuntu-custom.iso
   log_msg ">>> Calculating MD5 sums..."
   rm -rf "${DIR_BUILD}md5sum.txt"
-  (cd "${DIR_BUILD}" && find . -type f -print0 | xargs -0 md5sum |  \
-    grep -v "boot.cat" | grep -v "md5sum.txt" > md5sum.txt)
+  (cd "${DIR_BUILD}" && find . -type f -print0 | xargs -0 md5sum |             \
+      grep -v "boot.cat" | grep -v "md5sum.txt" > md5sum.txt)
   log_msg ">>> Building iso image..."
   apt-get install --yes genisoimage >/dev/null 2>&1
-  mkisofs -r -V "Ubuntu OEM install"                       \
-          -cache-inodes                                    \
-          -J -l -b "isolinux/isolinux.bin"                 \
-          -c "isolinux/boot.cat" -no-emul-boot             \
-          -boot-load-size 4 -boot-info-table               \
+  mkisofs -r -V "Ubuntu OEM install"                                           \
+          -cache-inodes                                                        \
+          -J -l -b "isolinux/isolinux.bin"                                     \
+          -c "isolinux/boot.cat" -no-emul-boot                                 \
+          -boot-load-size 4 -boot-info-table                                   \
           -o "${CUSTOMIMAGE}" "${DIR_BUILD}" >/dev/null 2>&1
 }
 
