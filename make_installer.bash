@@ -31,10 +31,10 @@ function main {
   packingImage
 }
 
-if [ ! -f "${HOME}${IMAGE}" ]; then
-  log_msg "Error"
-  exit 1
-fi
+# if [ ! -f "${HOME}${IMAGE}" ]; then
+#   log_msg "Error"
+#   exit 1
+# fi
 
 function unpacingImage {
   # Распаковываем образ в директорию
@@ -100,8 +100,41 @@ function createLocRep {
 function gitClone {
   local git_user="$1"
   local git_password="$2"
-  git clone "ssh://""${git_user}""@mir.afsoft.org/opt/git/mm/mir.git:""${git_password}" "${HOME}/mir"
 
+  local git_url="mir.afsoft.org/opt/git/mm/mir.git"
+  git clone "ssh://"${git_user}"@"${git_url}":"${git_password}"" "${HOME}/mir"
+}
+
+function makeDialogPackage {
+  local srcDir="$(date +%Y-%m-%d)"
+  local urlMirGit="ssh://"${git_user}"@"${git_url}""
+  local stationName="mitino"
+  #               dscp0
+  #               dscp1
+  local hostRole="shn0"
+
+  # cd
+  # rm -Rf ./"${srcDir}"
+  # mkdir -p ./"${srcDir}"/mir.git
+  # cd ./"${srcDir}"
+  # git clone "${urlMirGit}" ./mir.git/
+  scp "${urlMirGit}" /downloads/packages/* ./mir.git/downloads/packages/
+  cd ./mir.git/src/logic/system/fs/
+  make dialog_package
+  mv ./dialog_package.tar /opt/
+  make configs
+  mv ./layout.tgz /opt/
+  rm -Rf /opt/mir.app.old
+  mkdir -p /opt/mir.app
+  mv /opt/mir.app /opt/mir.app.old
+  cd /opt/
+  tar xf ./dialog_package.tar
+  rm -f /opt/dialog_package.tar
+  cd ~/"${srcDir}"/mir.git/cfg/
+  make "${stationName}"
+  make install
+  cd rm -Rf ./"${srcDir}"
+  sudo -k /opt/mir.app/bin/dialog_finalize_install.sh "${hostRole}"
 }
 
 function createPreseed {
@@ -230,8 +263,8 @@ function changeBootScreen {
 }
 
 function copyDebPackages {
-  mkdir "${HOME}iso/packages"
-  cp -r "${HOME}packages/*" "${HOME}iso/packages"
+  mkdir -p "${HOME}iso/packages"
+  cp -rf "${HOME}packages/"* "${HOME}iso/packages/"
 }
 
 function packingImage {
@@ -255,8 +288,8 @@ function log_msg() {
   if [ ! -d "${DIR_BUILD}" ]; then
     mkdir -p "${DIR_BUILD}"
   fi
-  log_msg "$1"
-  log_msg "$mdate$1" >> "${DIR_BUILD}make_installer.log"
+  echo "$1"
+  echo "$mdate$1" >> "${DIR_BUILD}make_installer.log"
 }
 
 # Script's entry point: ########################################################
