@@ -7,6 +7,8 @@
 
 ### Constants ##################################################################
 DIR_BUILD="/home/user/iso/"
+ARCH="amd64"
+RELEASE="precise"
 HOME="/home/user/"
 IMAGE="ubuntu-12.04.2-server-amd64.iso"
 # mdate="${date +%Y%m%d}"
@@ -34,7 +36,7 @@ function main {
 }
 
 if [ ! -f "${HOME}${IMAGE}" ]; then
-  log_msg "Error"
+  log_msg "Image ${IMAGE} not found. Exiting"
   exit 1
 fi
 
@@ -51,40 +53,71 @@ function unpacingImage {
 
 function createLocRep {
   if [ `ls ${HOME}packages/debs | wc -l` -gt 0 ]; then
-   return 0
+    return 0
   fi
-  log_msg "Create a directory with *. deb packages"
-  mkdir -p "${HOME}packages/debs/"
-  apt-get install --yes python-software-properties >/dev/null 2>&1
-  add-apt-repository --yes ppa:chris-lea/node.js >/dev/null 2>&1
-  add-apt-repository --yes ppa:webupd8team/java >/dev/null 2>&1
-  apt-get update >/dev/null 2>&1
-  log_msg "Download *.deb packages"
   local fileTmpUrls="/tmp/downloads.txt"
-  rm -f "${fileTmpUrls}"
-  local packages=
-  IFS=' ' read -a packages <<< "${TARGET_PACKAGES}"
-  for p in "${packages[@]}"; do
-    apt-get --print-uris --yes install "${p}" \
-        | grep ^\' | cut -d\' -f2 >> "${fileTmpUrls}"
-  done
-  (cd "${HOME}packages/debs" && wget --input-file "${fileTmpUrls}"             \
-      >/dev/null 2>&1)
-  log_msg "Download kernel"
+  # Обманем баш и подставим функцию вместо значения функции
+  local packages='${packages[@]}'
+  local p='${p}'
+  mkdir -p "${HOME}packages/debs/"
+  apt-get install --yes debootstrap >/dev/null 2>&1
+  debootstrap --arch="${ARCH}" "${RELEASE}" "${HOME}packages"
+  cp /etc/hosts "${HOME}packages/etc/hosts"
+  cp /etc/resolv.conf "${HOME}packages/etc/resolv.conf"
+  cp /etc/apt/sources.list "${HOME}packages/etc/apt/sources.list"
+  cat > "${HOME}packages/tmp/packages.bash" <<EOFcreateLocRep
+#!/bin/bash
+
+mount none -t proc /proc
+mount none -t sysfs /sys
+mount none -t devpts /dev/pts
+export HOME=/root
+export LC_ALL=C
+echo "Create a directory with *. deb packages"
+
+function main {
+apt-get update >/dev/null 2>&1
+apt-get install --yes python-software-properties >/dev/null 2>&1
+add-apt-repository --yes ppa:chris-lea/node.js >/dev/null 2>&1
+add-apt-repository --yes ppa:webupd8team/java >/dev/null 2>&1
+apt-get update >/dev/null 2>&1
+apt-get remove --yes --purge python-software-properties >/dev/null 2>&1
+echo "Forming a list of *.deb packages"
+rm -f "${fileTmpUrls}"
+IFS=' ' read -a packages <<< "${TARGET_PACKAGES}"
+for p in "${packages[@]}"; do
+  apt-get --print-uris --yes install "${p}" \
+      | grep ^\' | cut -d\' -f2 >> "${fileTmpUrls}"
+done
+}
+
+main "$@"
+umount -lf /proc
+umount -lf /sys
+umount -lf /dev/pts
+EOFcreateLocRep
+  chmod +x "${HOME}packages/tmp/packages.bash"
+  chroot "${HOME}packages" bash "/tmp/packages.bash"
+  log_msg "Download *.deb packages"
+  (cd "${HOME}packages/debs" && wget --input-file                              \
+      "${HOME}packages/tmp/downloads.txt" >/dev/null 2>&1)
   local dir_kernel="${HOME}packages/kernel/"
   local version="3.2.27.130816-bmcm-rt40"
   local headers="linux-headers-${version}_0_amd64.deb"
   local image="linux-image-${version}_0_amd64.deb"
   local url="https://dl.dropboxusercontent.com/u/42220829/pp/"
   mkdir -p "${dir_kernel}"
+  log_msg "Download kernel"
   wget --quiet "${url}${headers}" -O "${dir_kernel}${headers}">/dev/null 2>&1
   wget --quiet "${url}${image}" -O "${dir_kernel}${image}">/dev/null 2>&1
   rm -rf "${HOME}packages/debs/cups"*
   rm -rf "${HOME}packages/debs/avahi-daemon"*
+  log_msg "Clean duplicate packages"
   rm -rf "${HOME}packages/debs/"*".deb."*
 }
 
 function createBootMenu {
+  log_msg "Create Boot menu and choice language"
   echo "ru" >> "${DIR_BUILD}isolinux/lang"
   cat > "${DIR_BUILD}isolinux/txt.cfg" <<EOF1
 default auto
@@ -143,6 +176,7 @@ function makeDialogPackage {
 }
 
 function createPreseed {
+  log_msg "Create preseed file"
   apt-get install --yes syslinux-common >/dev/null 2>&1
   local cryptpassword=`md5pass ${PASSWORD}`
   cat > "${DIR_BUILD}preseed/auto.seed" <<EOFcreatePreseed
@@ -243,7 +277,8 @@ EOFcreatePreseed
 }
 
 function createPostinstall {
-  cat > "${HOME}packages/postinstall.bash" <<EOFcreatePostinstall
+  log_msg "Create postinstall script"
+  cat > "${DIR_BUILD}packages/postinstall.bash" <<EOFcreatePostinstall
 #!/bin/bash
 
 # Для APT. Эти переменные наследуются от инсталлятора и мешают нормальной работе.
@@ -284,8 +319,11 @@ function changeBootScreen {
 }
 
 function copyDebPackages {
-  mkdir -p "${HOME}iso/packages"
-  cp -rf "${HOME}packages/"* "${HOME}iso/packages/"
+  log_msg "Copy *.deb packages in the image directory"
+  mkdir -p "${HOME}iso/packages/debs"
+  mkdir -p "${HOME}iso/packages/kernel"
+  cp -rf "${HOME}packages/debs/"* "${HOME}iso/packages/debs"
+  cp -rf "${HOME}packages/kernel/"* "${HOME}iso/packages/kernel"
 }
 
 function packingImage {
