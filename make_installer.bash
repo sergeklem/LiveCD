@@ -16,7 +16,8 @@ TARGET_PACKAGES="xorg nodm chromium-browser wget htop mc nano openssh-server   \
                  sshpass git curl bzip2 build-essential zlib1g-dev libtool     \
                  build-essential zlib1g-dev libtool automake autoconf expect   \
                  autotools-dev python-pexpect python-software-properties       \
-                 python cups foo2zjs nodejs debconf-utils maven whois perl"
+                 python cups foo2zjs nodejs debconf-utils maven whois perl     \
+                 avahi-daemon cups"
                  # oracle-java7-installer oracle-java7-set-default"
 
 ### Implementation #############################################################
@@ -50,6 +51,7 @@ function unpacingImage {
 function createBootMenu {
   log_msg "ru" >> "${DIR_BUILD}isolinux/lang"
   cat > "${DIR_BUILD}isolinux/txt.cfg" <<EOF1
+timeout 30
 default auto
 label auto
   menu label ^Auto install
@@ -65,12 +67,11 @@ EOF1
 }
 
 function createLocRep {
-  # if [ `ls ${HOME}packages/debs | wc -l` -gt 0 ]; then
-  #  return 0
-  # fi
+  if [ `ls ${HOME}packages/debs | wc -l` -gt 0 ]; then
+   return 0
+  fi
   log_msg "Create a directory with *. deb packages"
-  local dir_packages="${HOME}packages/debs/"
-  mkdir -p "${dir_packages}"
+  mkdir -p "${HOME}packages/debs/"
   apt-get install --yes python-software-properties >/dev/null 2>&1
   add-apt-repository --yes ppa:chris-lea/node.js >/dev/null 2>&1
   add-apt-repository --yes ppa:webupd8team/java >/dev/null 2>&1
@@ -89,12 +90,14 @@ function createLocRep {
   (cd "${HOME}packages/debs" && wget --input-file "${fileTmpUrls}"             \
       >/dev/null 2>&1 && cd -)
   log_msg "Download kernel"
+  local dir_kernel="${HOME}packages/kernel/"
+  mkdir -p "${dir_kernel}"
   local version="3.2.27.130816-bmcm-rt40"
   local headers="linux-headers-${version}_0_amd64.deb"
   local image="linux-image-${version}_0_amd64.deb"
   local url="https://dl.dropboxusercontent.com/u/42220829/pp/"
-  wget --quiet "${URL}""${headers}" -O "${dir_packages}""${headers}">/dev/null 2>&1
-  wget --quiet "${URL}""${image}" -O "${dir_packages}""${image}">/dev/null 2>&1
+  wget --quiet "${URL}""${headers}" -O "${dir_kernel}""${headers}">/dev/null 2>&1
+  wget --quiet "${URL}""${image}" -O "${dir_kernel}""${image}">/dev/null 2>&1
 }
 
 function gitClone {
@@ -139,7 +142,10 @@ function makeDialogPackage {
 
 function createPreseed {
   apt-get install --yes whois >/dev/null 2>&1
-  local cryptpassword="$(mkpasswd "${PASSWORD}")"
+  local cryptpassword=`md5pass ${PASSWORD}`
+  echo "Логин: ""${USER}"
+  echo "Пароль: ""${PASSWORD}"
+  echo "md5: ""${cryptpassword}"
   cat > "${DIR_BUILD}preseed/auto.seed" <<EOFcreatePreseed
 d-i debian-installer/locale string ru_RU.UTF-8
 # Keyboard
@@ -163,12 +169,12 @@ d-i time/zone string Europe/Moscow
 d-i clock-setup/ntp boolean true
 
 # Users
-d-i passwd/root-login boolean true
+#d-i passwd/root-login boolean true
 d-i passwd/make-user boolean true
-d-i passwd/root-password-crypted password "${cryptpassword}"
-d-i passwd/user-fullname string "${USER}"
-d-i passwd/username string "${USER}"
-d-i passwd/user-password-crypted password "${cryptpassword}"
+#d-i passwd/root-password-crypted password ${cryptpassword}
+d-i passwd/user-fullname string ${USER}
+d-i passwd/username string ${USER}
+d-i passwd/user-password-crypted password ${cryptpassword}
 d-i user-setup/allow-password-weak boolean true
 d-i user-setup/encrypt-home boolean false
 
@@ -223,7 +229,7 @@ pkgsel pkgsel/update-policy select none
 # At last
 d-i finish-install/reboot_in_progress note
 
-tasksel tasksel/first multiselect ubuntu-server
+tasksel tasksel/first multiselect server
 
 d-i preseed/late_command string mkdir /target/install/;                        \
         cp -R /cdrom/packages/* /target/install/;                              \
@@ -242,7 +248,20 @@ unset DEBCONF_FRONTEND
 unset DEBIAN_HAS_FRONTEND
 unset DEBIAN_FRONTEND
 
+#install *.deb packages
 dpkg -i --force-depends /install/debs/*.deb
+
+#install custom kernel
+# local dir_kernel="/install/kernel/"
+# local version="3.2.27.130816-bmcm-rt40"
+# local headers="linux-headers-${version}_0_amd64.deb"
+# local image="linux-image-${version}_0_amd64.deb"
+# rm -f "/usr/src/linux" >/dev/null 2>&1
+# dpkg -i "${dir_kernel}${headers}" "${dir_kernel}${image}" >/dev/null 2>&1 && \
+#   ln -s "/usr/src/linux-headers-${version}" "/usr/src/linux" >/dev/null 2>&1
+
+#install bmcm software
+
 
 # Копируем заренее подготовленную начальную конфигурацию пользователя ubuntu
 # cp -R /install/home/* /home/ubuntu/
