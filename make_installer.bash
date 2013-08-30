@@ -238,9 +238,9 @@ d-i finish-install/reboot_in_progress note
 tasksel tasksel/first multiselect ubuntu-server
 
 d-i preseed/late_command string mkdir /target/install/;                        \
-        cp -R /cdrom/packages/* /target/install/;                              \
-        chroot /target chmod +x /install/postinstall.bash;                     \
-        chroot /target bash /install/postinstall.bash
+    cp -R /cdrom/packages/* /target/install/;                                  \
+    chroot /target chmod +x /install/postinstall.bash;                         \
+    chroot /target bash /install/postinstall.bash
 EOFcreatePreseed
 }
 
@@ -255,16 +255,16 @@ unset DEBIAN_HAS_FRONTEND
 unset DEBIAN_FRONTEND
 
 #install *.deb packages
-dpkg -i --force-depends /install/debs/*.deb
+#dpkg -i --force-depends /install/debs/*.deb
 
 #install custom kernel
-# local dir_kernel="/install/kernel/"
-# local version="3.2.27.130816-bmcm-rt40"
-# local headers="linux-headers-${version}_0_amd64.deb"
-# local image="linux-image-${version}_0_amd64.deb"
-# rm -f "/usr/src/linux" >/dev/null 2>&1
-# dpkg -i "${dir_kernel}${headers}" "${dir_kernel}${image}" >/dev/null 2>&1 && \
-#   ln -s "/usr/src/linux-headers-${version}" "/usr/src/linux" >/dev/null 2>&1
+local dir_kernel="/install/kernel/"
+local version="3.2.27.130816-bmcm-rt40"
+local headers="linux-headers-${version}_0_amd64.deb"
+local image="linux-image-${version}_0_amd64.deb"
+rm -f "/usr/src/linux" >/dev/null 2>&1
+dpkg -i "${dir_kernel}${headers}" "${dir_kernel}${image}" >/dev/null 2>&1 && \
+  ln -s "/usr/src/linux-headers-${version}" "/usr/src/linux" >/dev/null 2>&1
 
 #install bmcm software
 
