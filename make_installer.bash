@@ -65,32 +65,28 @@ function createLocRep {
   local packages=
   IFS=' ' read -a packages <<< "${TARGET_PACKAGES}"
   for p in "${packages[@]}"; do
-    log_msg "${p}"
     apt-get --print-uris --yes install "${p}" \
         | grep ^\' | cut -d\' -f2 >> "${fileTmpUrls}"
   done
   (cd "${HOME}packages/debs" && wget --input-file "${fileTmpUrls}"             \
-      >/dev/null 2>&1 && cd -)
+      >/dev/null 2>&1)
   log_msg "Download kernel"
   local dir_kernel="${HOME}packages/kernel/"
-  mkdir -p "${dir_kernel}"
   local version="3.2.27.130816-bmcm-rt40"
   local headers="linux-headers-${version}_0_amd64.deb"
   local image="linux-image-${version}_0_amd64.deb"
   local url="https://dl.dropboxusercontent.com/u/42220829/pp/"
+  mkdir -p "${dir_kernel}"
   wget --quiet "${url}${headers}" -O "${dir_kernel}${headers}">/dev/null 2>&1
   wget --quiet "${url}${image}" -O "${dir_kernel}${image}">/dev/null 2>&1
-  rm -rf "${HOME}packages/debs/{cups-*,avahi-daemon_*}"
-  rm -rf "/home/user/packages/debs/cups"*
-  rm -rf "/home/user/packages/debs/avahi-daemon"*
+  rm -rf "${HOME}packages/debs/cups"*
+  rm -rf "${HOME}packages/debs/avahi-daemon"*
+  rm -rf "${HOME}packages/debs/"*".deb."*
 }
 
 function createBootMenu {
-  log_msg "ru" >> "${DIR_BUILD}isolinux/lang"
+  echo "ru" >> "${DIR_BUILD}isolinux/lang"
   cat > "${DIR_BUILD}isolinux/txt.cfg" <<EOF1
-prompt 0
-timeout 10
-
 default auto
 label auto
   menu label ^Auto install
@@ -149,9 +145,6 @@ function makeDialogPackage {
 function createPreseed {
   apt-get install --yes syslinux-common >/dev/null 2>&1
   local cryptpassword=`md5pass ${PASSWORD}`
-  echo "Логин: ${USER}"
-  echo "Пароль: ${PASSWORD}"
-  echo "md5: ${cryptpassword}"
   cat > "${DIR_BUILD}preseed/auto.seed" <<EOFcreatePreseed
 d-i debian-installer/locale string ru_RU.UTF-8
 # Keyboard
@@ -218,6 +211,11 @@ d-i partman/choose_partition select finish
 d-i partman/confirm boolean true
 d-i partman/confirm_nooverwrite boolean true
 
+# BASE INSTALLER
+# Устанавливаемый пакет (мета) с образом ядра; можно указать «none»,
+# если ядро устанавливать не нужно.
+d-i base-installer/kernel/image string none
+
 # GRUB
 d-i grub-installer/only_debian boolean true
 d-i grub-installer/with_other_os boolean true
@@ -255,16 +253,14 @@ unset DEBIAN_HAS_FRONTEND
 unset DEBIAN_FRONTEND
 
 #install *.deb packages
-#dpkg -i --force-depends /install/debs/*.deb
+dpkg -i --force-depends /install/debs/*.deb
 
 #install custom kernel
-local dir_kernel="/install/kernel/"
-local version="3.2.27.130816-bmcm-rt40"
-local headers="linux-headers-${version}_0_amd64.deb"
-local image="linux-image-${version}_0_amd64.deb"
-rm -f "/usr/src/linux" >/dev/null 2>&1
-dpkg -i "${dir_kernel}${headers}" "${dir_kernel}${image}" >/dev/null 2>&1 && \
-  ln -s "/usr/src/linux-headers-${version}" "/usr/src/linux" >/dev/null 2>&1
+rm -f /usr/src/linux >/dev/null
+cd /install/kernel/
+echo "1234567890"
+dpkg -i linux-headers-3.2.27.130816-bmcm-rt40_0_amd64.deb linux-image-3.2.27.130816-bmcm-rt40_0_amd64.deb
+ln -s /usr/src/linux-headers-3.2.27.130816-bmcm-rt40 /usr/src/linux
 
 #install bmcm software
 
