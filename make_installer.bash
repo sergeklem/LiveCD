@@ -9,6 +9,8 @@
 DIR_BUILD="/home/user/iso/"
 HOME="/home/user/"
 IMAGE="ubuntu-12.04.2-server-amd64.iso"
+# mdate="${date +%Y%m%d}"
+# CUSTOMIMAGE="arm-bmcm-nightly-${mdate}_amd64.iso"
 CUSTOMIMAGE="ARM_12.04-amd64.iso"
 USER="user"
 PASSWORD="user"
@@ -16,15 +18,14 @@ TARGET_PACKAGES="xorg nodm chromium-browser wget htop mc nano openssh-server   \
                  sshpass git curl bzip2 build-essential zlib1g-dev libtool     \
                  build-essential zlib1g-dev libtool automake autoconf expect   \
                  autotools-dev python-pexpect python-software-properties       \
-                 python cups foo2zjs nodejs debconf-utils maven whois perl     \
-                 avahi-daemon cups"
+                 python cups foo2zjs nodejs debconf-utils maven whois perl"
                  # oracle-java7-installer oracle-java7-set-default"
 
 ### Implementation #############################################################
 function main {
   unpacingImage
-  createBootMenu
   createLocRep
+  createBootMenu
   createPreseed
   createPostinstall
   changeBootScreen
@@ -32,10 +33,10 @@ function main {
   packingImage
 }
 
-# if [ ! -f "${HOME}${IMAGE}" ]; then
-#   log_msg "Error"
-#   exit 1
-# fi
+if [ ! -f "${HOME}${IMAGE}" ]; then
+  log_msg "Error"
+  exit 1
+fi
 
 function unpacingImage {
   # Распаковываем образ в директорию
@@ -46,24 +47,6 @@ function unpacingImage {
   log_msg "** Syncing..."
   rsync -av /mnt/ "${DIR_BUILD}" >/dev/null 2>&1
   chmod -R u+w "${DIR_BUILD}"
-}
-
-function createBootMenu {
-  log_msg "ru" >> "${DIR_BUILD}isolinux/lang"
-  cat > "${DIR_BUILD}isolinux/txt.cfg" <<EOF1
-timeout 30
-default auto
-label auto
-  menu label ^Auto install
-  kernel /install/vmlinuz
-  append  file=/cdrom/preseed/auto.seed vga=788 language=ru country=RU locale=ru_RU.UTF-8 console-setup/ask_detect=false keyboard-configuration/layout=ru keyboard-configuration/variant=ru keyboard-configuration/toggle=Alt+Shift initrd=/install/initrd.gz quiet --
-label memtest
-  menu label Test ^memory
-  kernel /install/mt86plus
-label hd
-  menu label ^Boot from first hard disk
-  localboot 0x80
-EOF1
 }
 
 function createLocRep {
@@ -77,7 +60,6 @@ function createLocRep {
   add-apt-repository --yes ppa:webupd8team/java >/dev/null 2>&1
   apt-get update >/dev/null 2>&1
   log_msg "Download *.deb packages"
-
   local fileTmpUrls="/tmp/downloads.txt"
   rm -f "${fileTmpUrls}"
   local packages=
@@ -96,33 +78,57 @@ function createLocRep {
   local headers="linux-headers-${version}_0_amd64.deb"
   local image="linux-image-${version}_0_amd64.deb"
   local url="https://dl.dropboxusercontent.com/u/42220829/pp/"
-  wget --quiet "${URL}""${headers}" -O "${dir_kernel}""${headers}">/dev/null 2>&1
-  wget --quiet "${URL}""${image}" -O "${dir_kernel}""${image}">/dev/null 2>&1
+  wget --quiet "${url}${headers}" -O "${dir_kernel}${headers}">/dev/null 2>&1
+  wget --quiet "${url}${image}" -O "${dir_kernel}${image}">/dev/null 2>&1
+  rm -rf "${HOME}packages/debs/{cups-*,avahi-daemon_*}"
+  rm -rf "/home/user/packages/debs/cups"*
+  rm -rf "/home/user/packages/debs/avahi-daemon"*
+}
+
+function createBootMenu {
+  log_msg "ru" >> "${DIR_BUILD}isolinux/lang"
+  cat > "${DIR_BUILD}isolinux/txt.cfg" <<EOF1
+prompt 0
+timeout 10
+
+default auto
+label auto
+  menu label ^Auto install
+  kernel /install/vmlinuz
+  append  file=/cdrom/preseed/auto.seed vga=788 language=ru country=RU locale=ru_RU.UTF-8 console-setup/ask_detect=false keyboard-configuration/layout=ru keyboard-configuration/variant=ru keyboard-configuration/toggle=Alt+Shift initrd=/install/initrd.gz quiet --
+label memtest
+  menu label Test ^memory
+  kernel /install/mt86plus
+label hd
+  menu label ^Boot from first hard disk
+  localboot 0x80
+EOF1
 }
 
 function gitClone {
   local git_user="$1"
   local git_password="$2"
-
   local git_url="mir.afsoft.org/opt/git/mm/mir.git"
-  git clone "ssh://"${git_user}"@"${git_url}":"${git_password}"" "${HOME}/mir"
+  mkdir -p "${HOME}mir.git"
+  git clone "ssh://${git_user}@${git_url}" "${HOME}mir.git"
 }
 
 function makeDialogPackage {
+  apt-get install --yes make gcc
   local srcDir="$(date +%Y-%m-%d)"
   local urlMirGit="ssh://"${git_user}"@"${git_url}""
   local stationName="mitino"
   #               dscp0
   #               dscp1
   local hostRole="shn0"
-
+  local dir_git="${HOME}mir.git/"
   # cd
   # rm -Rf ./"${srcDir}"
   # mkdir -p ./"${srcDir}"/mir.git
   # cd ./"${srcDir}"
   # git clone "${urlMirGit}" ./mir.git/
-  scp "${urlMirGit}" /downloads/packages/* ./mir.git/downloads/packages/
-  cd ./mir.git/src/logic/system/fs/
+  # scp "${urlMirGit}" /downloads/packages/* ./mir.git/downloads/packages/
+  cd "${dir_git}src/logic/system/fs/"
   make dialog_package
   mv ./dialog_package.tar /opt/
   make configs
@@ -141,11 +147,11 @@ function makeDialogPackage {
 }
 
 function createPreseed {
-  apt-get install --yes whois >/dev/null 2>&1
+  apt-get install --yes syslinux-common >/dev/null 2>&1
   local cryptpassword=`md5pass ${PASSWORD}`
-  echo "Логин: ""${USER}"
-  echo "Пароль: ""${PASSWORD}"
-  echo "md5: ""${cryptpassword}"
+  echo "Логин: ${USER}"
+  echo "Пароль: ${PASSWORD}"
+  echo "md5: ${cryptpassword}"
   cat > "${DIR_BUILD}preseed/auto.seed" <<EOFcreatePreseed
 d-i debian-installer/locale string ru_RU.UTF-8
 # Keyboard
@@ -229,7 +235,7 @@ pkgsel pkgsel/update-policy select none
 # At last
 d-i finish-install/reboot_in_progress note
 
-tasksel tasksel/first multiselect server
+tasksel tasksel/first multiselect ubuntu-server
 
 d-i preseed/late_command string mkdir /target/install/;                        \
         cp -R /cdrom/packages/* /target/install/;                              \
