@@ -7,15 +7,18 @@
 
 ### Constants ##################################################################
 THIS_SCRIPT_NAME=$(basename $0 .bash)
+
 STATION_NAME="mitino"
+TARGET_HOST_ROLE="shn0"
                 # dscp0
                 # dscp1
-TARGET_HOST_ROLE="shn0"
+                # shn0
+
 DIR_BUILD="/home/user/iso/"
-ARCH="amd64"
-RELEASE="precise"
 HOME="/home/user/"
 IMAGE="ubuntu-12.04.2-server-amd64.iso"
+#DIR_MOUNT_UBUNTU_ISO="/mnt/default_ubuntu_iso/"
+DIR_MOUNT_UBUNTU_ISO="/mnt/"
 BOOT_WALLPAPER="https://www.dropbox.com/s/ykudjl4ozuungie/wallpaper.png"
 # mdate="${date +%Y%m%d}"
 # CUSTOMIMAGE="arm-bmcm-${mdate}_amd64.iso"
@@ -34,6 +37,7 @@ function main {
   unpacingImage
   createLocRep
   createBootMenu
+  makeDialogPackage
   createPreseed
   createPostinstall
   copyDebPackages
@@ -49,65 +53,88 @@ function unpacingImage {
   # Unpacking image in directory
   rm -rf "${DIR_BUILD}"
   mkdir -p "${DIR_BUILD}"
+  mkdir -p "${DIR_MOUNT_UBUNTU_ISO}"
   log_msg "** Mounting image..."
-  sudo mount -o loop "${IMAGE}" /mnt/ 
+  mount -o loop "${IMAGE}" "${DIR_MOUNT_UBUNTU_ISO}"
   log_msg "** Syncing..."
   rsync -av /mnt/ "${DIR_BUILD}" >/dev/null 2>&1
   chmod -R u+w "${DIR_BUILD}"
 }
 
 function createLocRep {
-  if [ `ls ${HOME}packages/debs | wc -l` -gt 0 ]; then
-    return 0
-  fi
-  local fileTmpUrls="/tmp/downloads.txt"
-  # Обманем баш и подставим функцию вместо значения функции
-  local packages='${packages[@]}'
-  local p='${p}'
   mkdir -p "${HOME}packages/debs"
+  local arch="amd64"
+  local release="precise"
+  local fileDebUrls="/tmp/required_deb_urls.txt"
   apt-get install --yes debootstrap >/dev/null 2>&1
-  debootstrap --arch="${ARCH}" "${RELEASE}" "${HOME}packages" >/dev/null 2>&1
+  debootstrap --arch="${arch}" "${release}" "${HOME}packages" >/dev/null 2>&1
   cp /etc/hosts "${HOME}packages/etc/hosts"
   cp /etc/resolv.conf "${HOME}packages/etc/resolv.conf"
   cp /etc/apt/sources.list "${HOME}packages/etc/apt/sources.list"
   cat > "${HOME}packages/tmp/create_deb_list.bash" <<"EOFcreateLocRep"
 #!/bin/bash
 
-mount none -t proc /proc 
-mount none -t sysfs /sys
-mount none -t devpts /dev/pts
-export HOME=/root
-export LC_ALL=C
-echo "Create a directory with *. deb packages"
-
 function main {
-local target_packages="$@"
+  mountSystemDirectories
 
-apt-get update >/dev/null 2>&1
-apt-get install --yes python-software-properties >/dev/null 2>&1
-add-apt-repository --yes ppa:chris-lea/node.js >/dev/null 2>&1
-add-apt-repository --yes ppa:webupd8team/java >/dev/null 2>&1
-apt-get update >/dev/null 2>&1
-apt-get remove --yes --purge python-software-properties >/dev/null 2>&1
-echo "Forming a list of *.deb packages"
-rm -f "${fileTmpUrls}"
-IFS=' ' read -a packages <<< "${target_packages}"
-for p in "${packages[@]}"; do
-  apt-get --print-uris --yes install "${p}" \
-      | grep ^\' | cut -d\' -f2 >> "${fileTmpUrls}"
-done
+  addThirdPartyRepositories
+
+  fetchRequiredDebPackageUrls "${@}"
+
+  unmountSystemDirectories
+}
+
+function mountSystemDirectories {
+  mount none -t proc /proc 
+  mount none -t sysfs /sys
+  mount none -t devpts /dev/pts
+  export HOME=/root
+  export LC_ALL=C
+}
+
+function addThirdPartyRepositories {
+  apt-get update >/dev/null 2>&1
+  apt-get install --yes python-software-properties >/dev/null 2>&1
+  add-apt-repository --yes ppa:chris-lea/node.js >/dev/null 2>&1
+  add-apt-repository --yes ppa:webupd8team/java >/dev/null 2>&1
+  apt-get update >/dev/null 2>&1
+  apt-get remove --yes --purge python-software-properties >/dev/null 2>&1
+}
+
+function fetchRequiredDebPackageUrls {
+  local fileUrls="${1}"
+  shift
+  local targetPackages="${@}"
+
+  echo "fileUrls=\"${fileUrls}\""
+  echo "targetPackages=\"${targetPackages}\""
+
+  rm -f "${fileUrls}"
+
+  echo "Fetching *.deb packages URLs to file: \"${fileUrls}\""
+  IFS=' ' read -a packages <<< "${targetPackages}"
+  for p in "${packages[@]}"; do
+    apt-get --print-uris --yes install "${p}" \
+        | grep ^\' | cut -d\' -f2 >> "${fileUrls}"
+  done
+}
+
+function unmountSystemDirectories {
+  umount -lf /proc
+  umount -lf /sys
+  umount -lf /dev/pts
 }
 
 main "$@"
-umount -lf /proc
-umount -lf /sys
-umount -lf /dev/pts
+
 EOFcreateLocRep
   chmod +x "${HOME}packages/tmp/create_deb_list.bash"
-  chroot "${HOME}packages" bash "/tmp/create_deb_list.bash ${TARGET_PACKAGES}"
+  chroot "${HOME}packages" \
+      bash "/tmp/create_deb_list.bash" "${fileDebUrls}" "${TARGET_PACKAGES}"
+
   log_msg "Download *.deb packages"
   (cd "${HOME}packages/debs" && wget --input-file                              \
-      "${HOME}packages/tmp/downloads.txt" >/dev/null 2>&1)
+      "${HOME}packages${fileDebUrls}" >/dev/null 2>&1)
   local dir_kernel="${HOME}packages/kernel/"
   local version="3.2.27.130816-bmcm-rt40"
   local headers="linux-headers-${version}_0_amd64.deb"
@@ -149,14 +176,14 @@ ui gfxboot bootlogo
 EOF2
 }
 
-function gitClone {
-  apt-get install --yes git >/dev/null 2>&1
-  local git_user="$1"
-  local git_password="$2"
-  local git_url="mir.afsoft.org/opt/git/mm/mir.git"
-  mkdir -p "${HOME}mir.git"
-  git clone "ssh://${git_user}:${git_password}@${git_url}" "${HOME}mir.git"
-}
+# function gitClone {
+#   apt-get install --yes git >/dev/null 2>&1
+#   local git_user="$1"
+#   local git_password="$2"
+#   local git_url="mir.afsoft.org/opt/git/mm/mir.git"
+#   mkdir -p "${HOME}mir.git"
+#   git clone "ssh://${git_user}@${git_url}" "${HOME}mir.git"
+# }
 
 function makeDialogPackage {
   # wget https://www.dropbox.com/s/fq3zsl9v7n6gvdl/sw_dev__ubuntu_12.04_setup_all_software_from_repos.bash && \
@@ -167,18 +194,15 @@ function makeDialogPackage {
   mkdir -p "${dirInstall}"
   make --directory="${dirGit}downloads/packages/"
 
-  cd "${dirGit}src/logic/system/fs/" && \
-      make dialog_package && \
-      mv "./dialog_package.tar" "${dirInstall}"
+  local dirFs="${dirGit}src/logic/system/fs/"
+  make --directory="${dirFs}" dialog_package && \
+      mv "${dirFs}dialog_package.tar" "${dirInstall}"
+  make --directory="${dirFs}" configs && \
+      mv "${dirFs}layout.tgz" "${dirInstall}"
 
-  cd "${dirGit}src/logic/system/fs/" && \
-      make configs && \
-      mv "./layout.tgz" "${dirInstall}"
-
-  cd "${dirGit}cfg/" && \
-      make "${STATION_NAME}" && \
-      mv "${dirGit}cfg/build/station_config.tgz" "${dirInstall}"
-  #sudo -k /opt/mir.app/bin/dialog_finalize_install.sh "${TARGET_HOST_ROLE}"
+  local dirCfg="${dirGit}cfg/"
+  make --directory="${dirCfg}" "${STATION_NAME}" && \
+      mv "${dirCfg}build/station_config.tgz" "${dirInstall}"
 }
 
 function createPreseed {
@@ -304,7 +328,6 @@ cd /install/kernel/
 dpkg -i linux-headers-3.2.27.130816-bmcm-rt40_0_amd64.deb linux-image-3.2.27.130816-bmcm-rt40_0_amd64.deb
 ln -s /usr/src/linux-headers-3.2.27.130816-bmcm-rt40 /usr/src/linux
 
-
 #install bmcm software
 mkdir "/opt"
 mv "/install/bmcm/layout.tgz" "/opt/"
@@ -313,7 +336,6 @@ mv "/install/bmcm/dialog_package.tar" "/opt/" && \
     cd "/opt/" && tar xf "./dialog_package.tar"
 # rm -f "/opt/dialog_package.tar"
 /opt/mir.app/bin/dialog_finalize_install.sh "${TARGET_HOST_ROLE}"
-
 
 #change boot screen
 mkdir -p /lib/plymouth/themes/bmcm
@@ -341,14 +363,6 @@ EOF2
 update-alternatives --install /lib/plymouth/themes/default.plymouth default.plymouth /lib/plymouth/themes/bmcm/bmcm.plymouth 10
 update-alternatives --config default.plymouth
 update-initramfs -u
-
-# Копируем заренее подготовленную начальную конфигурацию пользователя ubuntu
-# cp -R /install/home/* /home/ubuntu/
-# cp -R /install/home/.config /home/ubuntu/
-# cp -R /install/home/.local /home/ubuntu/
-# cp -R /install/home/.gconf /home/ubuntu/
-# chown -R ubuntu:ubuntu /home/ubuntu
-# chmod -R u+w /home/ubuntu
 EOFcreatePostinstall
 }
 
@@ -375,13 +389,16 @@ function packingImage {
       grep -v "boot.cat" | grep -v "md5sum.txt" > md5sum.txt)
   log_msg ">>> Building iso image..."
   apt-get install --yes genisoimage >/dev/null 2>&1
-  mkisofs -r -V "Ubuntu OEM install"                                           \
+  mkisofs -r -V "BMCM ARM"                                                     \
           -cache-inodes                                                        \
           -J -l -b "isolinux/isolinux.bin"                                     \
           -c "isolinux/boot.cat" -no-emul-boot                                 \
           -boot-load-size 4 -boot-info-table                                   \
           -o "${CUSTOMIMAGE}" "${DIR_BUILD}" >/dev/null 2>&1
+  umount "${DIR_MOUNT_UBUNTU_ISO}"
 }
+
+# mkisofs -r -V "BMCM ARM" -cache-inodes -J -l -b "isolinux/isolinux.bin" -c "isolinux/boot.cat" -no-emul-boot -boot-load-size 4 -boot-info-table -o "ARM.iso" "/home/user/iso/"
 
 function log_msg() {
   mdate="$(date +%d-%m-%Y\ %H:%M:%S) "
