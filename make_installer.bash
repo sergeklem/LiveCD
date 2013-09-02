@@ -6,13 +6,19 @@
 ################################################################################
 
 ### Constants ##################################################################
+THIS_SCRIPT_NAME=$(basename $0 .bash)
+STATION_NAME="mitino"
+                # dscp0
+                # dscp1
+TARGET_HOST_ROLE="shn0"
 DIR_BUILD="/home/user/iso/"
 ARCH="amd64"
 RELEASE="precise"
 HOME="/home/user/"
 IMAGE="ubuntu-12.04.2-server-amd64.iso"
+BOOT_WALLPAPER="https://www.dropbox.com/s/ykudjl4ozuungie/wallpaper.png"
 # mdate="${date +%Y%m%d}"
-# CUSTOMIMAGE="arm-bmcm-nightly-${mdate}_amd64.iso"
+# CUSTOMIMAGE="arm-bmcm-${mdate}_amd64.iso"
 CUSTOMIMAGE="ARM_12.04-amd64.iso"
 USER="user"
 PASSWORD="user"
@@ -30,7 +36,6 @@ function main {
   createBootMenu
   createPreseed
   createPostinstall
-  changeBootScreen
   copyDebPackages
   packingImage
 }
@@ -41,11 +46,11 @@ if [ ! -f "${HOME}${IMAGE}" ]; then
 fi
 
 function unpacingImage {
-  # Распаковываем образ в директорию
+  # Unpacking image in directory
   rm -rf "${DIR_BUILD}"
   mkdir -p "${DIR_BUILD}"
   log_msg "** Mounting image..."
-  sudo mount -o loop "${IMAGE}" /mnt/
+  sudo mount -o loop "${IMAGE}" /mnt/ 
   log_msg "** Syncing..."
   rsync -av /mnt/ "${DIR_BUILD}" >/dev/null 2>&1
   chmod -R u+w "${DIR_BUILD}"
@@ -59,16 +64,16 @@ function createLocRep {
   # Обманем баш и подставим функцию вместо значения функции
   local packages='${packages[@]}'
   local p='${p}'
-  mkdir -p "${HOME}packages/debs/"
+  mkdir -p "${HOME}packages/debs"
   apt-get install --yes debootstrap >/dev/null 2>&1
-  debootstrap --arch="${ARCH}" "${RELEASE}" "${HOME}packages"
+  debootstrap --arch="${ARCH}" "${RELEASE}" "${HOME}packages" >/dev/null 2>&1
   cp /etc/hosts "${HOME}packages/etc/hosts"
   cp /etc/resolv.conf "${HOME}packages/etc/resolv.conf"
   cp /etc/apt/sources.list "${HOME}packages/etc/apt/sources.list"
-  cat > "${HOME}packages/tmp/packages.bash" <<EOFcreateLocRep
+  cat > "${HOME}packages/tmp/create_deb_list.bash" <<"EOFcreateLocRep"
 #!/bin/bash
 
-mount none -t proc /proc
+mount none -t proc /proc 
 mount none -t sysfs /sys
 mount none -t devpts /dev/pts
 export HOME=/root
@@ -76,6 +81,8 @@ export LC_ALL=C
 echo "Create a directory with *. deb packages"
 
 function main {
+local target_packages="$@"
+
 apt-get update >/dev/null 2>&1
 apt-get install --yes python-software-properties >/dev/null 2>&1
 add-apt-repository --yes ppa:chris-lea/node.js >/dev/null 2>&1
@@ -84,7 +91,7 @@ apt-get update >/dev/null 2>&1
 apt-get remove --yes --purge python-software-properties >/dev/null 2>&1
 echo "Forming a list of *.deb packages"
 rm -f "${fileTmpUrls}"
-IFS=' ' read -a packages <<< "${TARGET_PACKAGES}"
+IFS=' ' read -a packages <<< "${target_packages}"
 for p in "${packages[@]}"; do
   apt-get --print-uris --yes install "${p}" \
       | grep ^\' | cut -d\' -f2 >> "${fileTmpUrls}"
@@ -96,8 +103,8 @@ umount -lf /proc
 umount -lf /sys
 umount -lf /dev/pts
 EOFcreateLocRep
-  chmod +x "${HOME}packages/tmp/packages.bash"
-  chroot "${HOME}packages" bash "/tmp/packages.bash"
+  chmod +x "${HOME}packages/tmp/create_deb_list.bash"
+  chroot "${HOME}packages" bash "/tmp/create_deb_list.bash ${TARGET_PACKAGES}"
   log_msg "Download *.deb packages"
   (cd "${HOME}packages/debs" && wget --input-file                              \
       "${HOME}packages/tmp/downloads.txt" >/dev/null 2>&1)
@@ -132,47 +139,46 @@ label hd
   menu label ^Boot from first hard disk
   localboot 0x80
 EOF1
+  cat > "${DIR_BUILD}isolinux/isolinux.cfg" <<EOF2
+# D-I config version 2.0
+include menu.cfg
+default vesamenu.c32
+prompt 0
+timeout 20
+ui gfxboot bootlogo
+EOF2
 }
 
 function gitClone {
+  apt-get install --yes git >/dev/null 2>&1
   local git_user="$1"
   local git_password="$2"
   local git_url="mir.afsoft.org/opt/git/mm/mir.git"
   mkdir -p "${HOME}mir.git"
-  git clone "ssh://${git_user}@${git_url}" "${HOME}mir.git"
+  git clone "ssh://${git_user}:${git_password}@${git_url}" "${HOME}mir.git"
 }
 
 function makeDialogPackage {
-  apt-get install --yes make gcc
-  local srcDir="$(date +%Y-%m-%d)"
-  local urlMirGit="ssh://"${git_user}"@"${git_url}""
-  local stationName="mitino"
-  #               dscp0
-  #               dscp1
-  local hostRole="shn0"
-  local dir_git="${HOME}mir.git/"
-  # cd
-  # rm -Rf ./"${srcDir}"
-  # mkdir -p ./"${srcDir}"/mir.git
-  # cd ./"${srcDir}"
-  # git clone "${urlMirGit}" ./mir.git/
-  # scp "${urlMirGit}" /downloads/packages/* ./mir.git/downloads/packages/
-  cd "${dir_git}src/logic/system/fs/"
-  make dialog_package
-  mv ./dialog_package.tar /opt/
-  make configs
-  mv ./layout.tgz /opt/
-  rm -Rf /opt/mir.app.old
-  mkdir -p /opt/mir.app
-  mv /opt/mir.app /opt/mir.app.old
-  cd /opt/
-  tar xf ./dialog_package.tar
-  rm -f /opt/dialog_package.tar
-  cd ~/"${srcDir}"/mir.git/cfg/
-  make "${stationName}"
-  make install
-  cd rm -Rf ./"${srcDir}"
-  sudo -k /opt/mir.app/bin/dialog_finalize_install.sh "${hostRole}"
+  # wget https://www.dropbox.com/s/fq3zsl9v7n6gvdl/sw_dev__ubuntu_12.04_setup_all_software_from_repos.bash && \
+  # chmod +x sw_dev__ubuntu_12.04_setup_all_software_from_repos.bash && bash ./sw_dev__ubuntu_12.04_setup_all_software_from_repos.bash
+  local dirInstall="${HOME}packages/bmcm/"
+  local dirGit="${HOME}mir.git/"
+
+  mkdir -p "${dirInstall}"
+  make --directory="${dirGit}downloads/packages/"
+
+  cd "${dirGit}src/logic/system/fs/" && \
+      make dialog_package && \
+      mv "./dialog_package.tar" "${dirInstall}"
+
+  cd "${dirGit}src/logic/system/fs/" && \
+      make configs && \
+      mv "./layout.tgz" "${dirInstall}"
+
+  cd "${dirGit}cfg/" && \
+      make "${STATION_NAME}" && \
+      mv "${dirGit}cfg/build/station_config.tgz" "${dirInstall}"
+  #sudo -k /opt/mir.app/bin/dialog_finalize_install.sh "${TARGET_HOST_ROLE}"
 }
 
 function createPreseed {
@@ -278,7 +284,7 @@ EOFcreatePreseed
 
 function createPostinstall {
   log_msg "Create postinstall script"
-  cat > "${DIR_BUILD}packages/postinstall.bash" <<EOFcreatePostinstall
+  cat > "${HOME}packages/postinstall.bash" <<EOFcreatePostinstall
 #!/bin/bash
 
 # Для APT. Эти переменные наследуются от инсталлятора и мешают нормальной работе.
@@ -287,18 +293,54 @@ unset DEBCONF_FRONTEND
 unset DEBIAN_HAS_FRONTEND
 unset DEBIAN_FRONTEND
 
+
 #install *.deb packages
 dpkg -i --force-depends /install/debs/*.deb
+
 
 #install custom kernel
 rm -f /usr/src/linux >/dev/null
 cd /install/kernel/
-echo "1234567890"
 dpkg -i linux-headers-3.2.27.130816-bmcm-rt40_0_amd64.deb linux-image-3.2.27.130816-bmcm-rt40_0_amd64.deb
 ln -s /usr/src/linux-headers-3.2.27.130816-bmcm-rt40 /usr/src/linux
 
-#install bmcm software
 
+#install bmcm software
+mkdir "/opt"
+mv "/install/bmcm/layout.tgz" "/opt/"
+tar -xzf "/install/bmcm/station_config.tgz" --directory "/opt/mir.cfg/"
+mv "/install/bmcm/dialog_package.tar" "/opt/" && \
+    cd "/opt/" && tar xf "./dialog_package.tar"
+# rm -f "/opt/dialog_package.tar"
+/opt/mir.app/bin/dialog_finalize_install.sh "${TARGET_HOST_ROLE}"
+
+
+#change boot screen
+mkdir -p /lib/plymouth/themes/bmcm
+cd /install/wallpaper.png /lib/plymouth/themes/bmcm
+  cat > /lib/plymouth/themes/bmcm/bmcm.plymouth <<EOF1
+[Plymouth Theme]
+Name=bmcm
+Description=Wallpaper only
+ModuleName=script
+
+[script]
+ImageDir=/lib/plymouth/themes/bmcm
+ScriptFile=/lib/plymouth/themes/simple/bmcm.script
+EOF1
+
+cat > /lib/plymouth/themes/bmcm/bmcm.script <<EOF2
+wallpaper_image = Image(«wallpaper.png»);
+screen_width = Window.GetWidth();
+screen_height = Window.GetHeight();
+resized_wallpaper_image = wallpaper_image.Scale(screen_width,screen_height);
+wallpaper_sprite = Sprite(resized_wallpaper_image);
+wallpaper_sprite.SetZ(-100);
+EOF2
+
+update-alternatives --install /lib/plymouth/themes/default.plymouth default.plymouth /lib/plymouth/themes/bmcm/bmcm.plymouth 10
+update-alternatives --config default.plymouth
+update-initramfs -u
 
 # Копируем заренее подготовленную начальную конфигурацию пользователя ubuntu
 # cp -R /install/home/* /home/ubuntu/
@@ -312,22 +354,21 @@ EOFcreatePostinstall
 
 function changeBootScreen {
   log_msg "Change the boot screen"
-  local dir_boot_screen="${HOME}iso/isolinux/"
-  rm -rf "${dir_boot_screen}splash.png"
-  wget https://www.dropbox.com/s/j77lfdjmkkvaa1w/splash.png -O \
-    "${dir_boot_screen}splash.png">/dev/null 2>&1
+  wget "${BOOT_WALLPAPER}" -O "${HOME}iso/packages">/dev/null 2>&1
 }
 
 function copyDebPackages {
   log_msg "Copy *.deb packages in the image directory"
   mkdir -p "${HOME}iso/packages/debs"
   mkdir -p "${HOME}iso/packages/kernel"
+  mkdir -p "${HOME}iso/packages/bmcm"
   cp -rf "${HOME}packages/debs/"* "${HOME}iso/packages/debs"
   cp -rf "${HOME}packages/kernel/"* "${HOME}iso/packages/kernel"
+  cp -rf "${HOME}packages/postinstall.bash" "${HOME}iso/packages/postinstall.bash"
+  cp -rf "${HOME}packages/bmcm/"* "${HOME}iso/packages/bmcm"
 }
 
 function packingImage {
-  # Запаковываем содержимое iso/ в образ ubuntu-custom.iso
   log_msg ">>> Calculating MD5 sums..."
   rm -rf "${DIR_BUILD}md5sum.txt"
   (cd "${DIR_BUILD}" && find . -type f -print0 | xargs -0 md5sum |             \
@@ -348,7 +389,7 @@ function log_msg() {
     mkdir -p "${DIR_BUILD}"
   fi
   echo "$1"
-  echo "$mdate$1" >> "${DIR_BUILD}make_installer.log"
+  echo "$mdate$1" >> "${DIR_BUILD}${THIS_SCRIPT_NAME}.log"
 }
 
 # Script's entry point: ########################################################

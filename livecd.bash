@@ -6,7 +6,7 @@
 ################################################################################
 
 ### Constants ##################################################################
-THIS_SCRIPT_NAME="$(basename $0)"
+THIS_SCRIPT_NAME="$(basename $0 .bash)"
 ARCH="amd64"
 RELEASE="precise"
 HOST="arm13"
@@ -404,7 +404,7 @@ function log_msg() {
       mkdir "${DIR_BUILD}"
     fi
     echo "$1"
-    echo "$mdate$1" >> "${DIR_BUILD}LiveCD.log"
+    echo "$mdate$1" >> "${DIR_BUILD}${THIS_SCRIPT_NAME}.log"
 }
 
 function backupScript {
